@@ -2900,6 +2900,16 @@ public class VirtualFlow<T extends IndexedCell> extends Region {
             return maxOff - absoluteOffset;
         }
 
+        if (fixedCellSizeEnabled) {
+            double cellSize = getFixedCellSize();
+            if (getCellCount() * cellSize <= absoluteOffset) {
+                return 0d;
+            } else {
+                int index = (int) (absoluteOffset / cellSize);
+                return absoluteOffset - index * cellSize;
+            }
+        }
+
         for (int i = 0; i < localCellCount; i++) {
             double h = getCellSize(i);
             if (h < 0) h = estSize;
@@ -2920,11 +2930,15 @@ public class VirtualFlow<T extends IndexedCell> extends Region {
             setPosition(0.0f);
         } else {
             double targetOffset = 0;
-            double estSize = estimatedSize/cellCount;
-            for (int i = 0; i < index; i++) {
-                double cz = getCellSize(i);
-                if (cz < 0) cz = estSize;
-                targetOffset = targetOffset+ cz;
+            if (fixedCellSizeEnabled) {
+                targetOffset = index * getFixedCellSize();
+            } else {
+                double estSize = estimatedSize/cellCount;
+                for (int i = 0; i < index; i++) {
+                    double cz = getCellSize(i);
+                    if (cz < 0) cz = estSize;
+                    targetOffset = targetOffset+ cz;
+                }
             }
             this.absoluteOffset = (estimatedSize < viewportLength)  ? 0  : targetOffset;
             adjustPosition();
@@ -3000,6 +3014,19 @@ public class VirtualFlow<T extends IndexedCell> extends Region {
     }
 
     private int computeCurrentIndex(int currentCellCount) {
+        if (currentCellCount == 0) {
+            return 0;
+        }
+
+        if (fixedCellSizeEnabled) {
+            if (currentCellCount * getFixedCellSize() <= absoluteOffset) {
+                return currentCellCount - 1;
+            } else {
+                double index = absoluteOffset / getFixedCellSize();
+                return (int)index;
+            }
+        }
+
         double total = 0;
         double estSize = estimatedSize / currentCellCount;
         for (int i = 0; i < currentCellCount; i++) {
@@ -3010,7 +3037,7 @@ public class VirtualFlow<T extends IndexedCell> extends Region {
                 return i;
             }
         }
-        return currentCellCount == 0 ? 0 : currentCellCount - 1;
+        return currentCellCount - 1;
     }
 
     /**
@@ -3137,6 +3164,18 @@ public class VirtualFlow<T extends IndexedCell> extends Region {
             int itemCount = getCellCount();
             int cacheCount = itemSizeCache.size();
             boolean keepRatio = ((cacheCount > 0) && !Double.isInfinite(this.absoluteOffset));
+
+            if (fixedCellSizeEnabled) {
+                double cellSize = getFixedCellSize();
+                this.estimatedSize = itemCount == 0 ? 1d : itemCount * cellSize;
+                if (keepRatio) {
+                    double oldIndexLocal = oldIndex < 0 ? computeCurrentIndex() : oldIndex;
+                    double newOffset = oldIndexLocal * cellSize;
+                    this.absoluteOffset = newOffset + oldOffset;
+                    adjustPosition();
+                }
+                return;
+            }
 
             if (oldIndex < 0) oldIndex = computeCurrentIndex();
             int added = 0;
