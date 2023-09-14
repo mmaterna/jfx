@@ -543,7 +543,7 @@ ext.IS_DEBUG_NATIVE = CONF == "DebugNative"
 ext.IS_RELEASE = !ext.IS_DEBUG_JAVA
 
 // Specifies whether to enable the Maven publishing tasks
-defineProperty("MAVEN_PUBLISH", "false")
+defineProperty("MAVEN_PUBLISH", "true")
 ext.IS_MAVEN_PUBLISH = Boolean.parseBoolean(MAVEN_PUBLISH)
 
 // Defines the compiler warning levels to use. If empty, then no warnings are generated. If
@@ -649,7 +649,7 @@ def buildTimestamp = zonedTime.format(formatter)
 defineProperty("BUILD_TIMESTAMP", buildTimestamp)
 def relSuffix = ""
 def relOpt = ""
-if (HUDSON_JOB_NAME == "not_hudson") {
+if (false && HUDSON_JOB_NAME == "not_hudson") {
     relSuffix = "-internal"
     relOpt = "-${buildTimestamp}"
 } else {
@@ -1727,7 +1727,7 @@ void addMavenPublication(Project project, List<String> projectDependencies) {
 
                     afterEvaluate {
                         artifact project.tasks."moduleEmptyPublicationJar$t.capital"
-                        artifact project.tasks."modularPublicationJar$t.capital" {
+                        artifact (project.tasks."modularPublicationJar$t.capital") {
                             classifier "$t.name"
                         }
                     }
