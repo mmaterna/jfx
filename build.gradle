@@ -527,8 +527,13 @@ ext.IS_DEBUG_NATIVE = CONF == "DebugNative"
 ext.IS_RELEASE = !ext.IS_DEBUG_JAVA
 
 // Specifies whether to enable the Maven publishing tasks
-defineProperty("MAVEN_PUBLISH", "false")
+defineProperty("MAVEN_PUBLISH", "true")
 ext.IS_MAVEN_PUBLISH = Boolean.parseBoolean(MAVEN_PUBLISH)
+
+// Specifies whether to publish common (non-classified) artifacts
+// Set to false on non-primary platforms to avoid conflicts when multiple platforms publish simultaneously
+defineProperty("PUBLISH_COMMON_ARTIFACTS", "true")
+ext.IS_PUBLISH_COMMON_ARTIFACTS = Boolean.parseBoolean(PUBLISH_COMMON_ARTIFACTS)
 
 // Define the compiler lint warnings to enable.
 //
@@ -623,7 +628,7 @@ defineProperty("MAX_COMPILE_THREADS", "0")
 //
 
 // The following properties should be left alone by developers and set only from Hudson.
-defineProperty("HUDSON_JOB_NAME", "not_hudson")
+defineProperty("HUDSON_JOB_NAME", "devmate")
 defineProperty("HUDSON_BUILD_NUMBER","0000")
 defineProperty("PROMOTED_BUILD_NUMBER", "0")
 defineProperty("MILESTONE_FCS", "false")
@@ -1843,6 +1848,13 @@ void addMavenPublication(Project project, List<String> projectDependencies) {
         }
     }
 
+    // Create a sources jar task for this project
+    // Depends on compileJava to ensure generated sources are available
+    def sourcesJarTask = project.tasks.findByName('sourcesJar') ?: project.task('sourcesJar', type: Jar, dependsOn: project.compileJava) {
+        archiveClassifier.set('sources')
+        from project.sourceSets.main.allJava
+    }
+
     compileTargets { t ->
         project.publishing {
             publications {
@@ -1851,7 +1863,13 @@ void addMavenPublication(Project project, List<String> projectDependencies) {
                     artifactId = artifactName
 
                     afterEvaluate {
-                        artifact project.tasks."moduleEmptyPublicationJar$t.capital"
+                        // Only publish common (non-classifier) artifacts from primary platform
+                        // to avoid conflicts when multiple platforms publish simultaneously
+                        if (IS_PUBLISH_COMMON_ARTIFACTS) {
+                            artifact project.tasks."moduleEmptyPublicationJar$t.capital"
+                            // Publish sources jar (platform-independent, so only publish once)
+                            artifact sourcesJarTask
+                        }
                         artifact project.tasks."modularPublicationJar$t.capital" {
                             archiveClassifier.set("$t.name")
                         }

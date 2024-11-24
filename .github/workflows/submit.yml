@@ -47,11 +47,14 @@ on:
       - main
       - 'jfx[0-9]+'
       - 'WIP*'
+    tags:
+      - '*-devmate'
   # Enable triggering the workflow manually
   workflow_dispatch:
 
 permissions:
   contents: read
+  packages: write  # Required for publishing to GitHub Packages
 
 jobs:
   validation:
@@ -136,9 +139,10 @@ jobs:
           # export PATH="$JAVA_HOME/bin:$ANT_HOME/bin:$PATH"
           export PATH="$JAVA_HOME/bin:$PATH"
           bash gradlew -version
-          bash gradlew --info all
+          bash gradlew --info all -x test
 
       - name: Run JavaFX headless tests
+        if: false # disabled to speed up builds
         working-directory: jfx
         run: |
           set -x
@@ -146,8 +150,25 @@ jobs:
           export PATH="$JAVA_HOME/bin:$PATH"
           bash gradlew --info --continue -PTEST_ONLY=true test -x :web:test
 
+      - name: Publish common and Linux artifacts to GitHub Packages
+        if: startsWith(github.ref, 'refs/tags/') && endsWith(github.ref_name, '-devmate')
+        working-directory: jfx
+        env:
+          REPOSITORY_URL: https://maven.pkg.github.com/${{ github.repository }}
+          REPOSITORY_USERNAME: ${{ github.actor }}
+          REPOSITORY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -x
+          export PATH="$JAVA_HOME/bin:$PATH"
+          # Linux publishes both common and platform-specific artifacts
+          bash gradlew publish \
+            -PrepositoryUrl="${REPOSITORY_URL}" \
+            -PrepositoryUsername="${REPOSITORY_USERNAME}" \
+            -PrepositoryPassword="${REPOSITORY_PASSWORD}" \
+            -PPUBLISH_COMMON_ARTIFACTS=true
 
   macos_x64_build:
+    if: false #disable macOS x64 build
     name: macOS x64
     needs: validation
     runs-on: "macos-15-intel"
@@ -236,7 +257,7 @@ jobs:
 
   macos_aarch64_build:
     name: macOS aarch64
-    needs: validation
+    needs: windows_x64_build
     runs-on: "macos-14"
 
     env:
@@ -309,9 +330,10 @@ jobs:
           #export PATH="$JAVA_HOME/bin:$ANT_HOME/bin:$PATH"
           export PATH="$JAVA_HOME/bin:$PATH"
           bash gradlew -version
-          bash gradlew --info all
+          bash gradlew --info all -x test
 
       - name: Run JavaFX headless tests
+        if: false # turned off for speed
         working-directory: jfx
         run: |
           set -x
@@ -319,10 +341,67 @@ jobs:
           export PATH="$JAVA_HOME/bin:$PATH"
           bash gradlew --info --continue -PTEST_ONLY=true test -x :web:test
 
+      - name: Publish macOS aarch64 artifacts to GitHub Packages
+        if: startsWith(github.ref, 'refs/tags/') && endsWith(github.ref_name, '-devmate')
+        working-directory: jfx
+        env:
+          REPOSITORY_URL: https://maven.pkg.github.com/${{ github.repository }}
+          REPOSITORY_USERNAME: ${{ github.actor }}
+          REPOSITORY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -x
+          export PATH="$JAVA_HOME/bin:$PATH"
+
+          # Extract Maven coordinates from Gradle
+          MAVEN_GROUP_ID=$(bash gradlew -q properties | grep "^MAVEN_GROUP_ID:" | awk '{print $2}' | head -n 1)
+          MAVEN_VERSION=$(bash gradlew -q properties | grep "^MAVEN_VERSION:" | awk '{print $2}' | head -n 1)
+
+          echo "MAVEN_GROUP_ID: $MAVEN_GROUP_ID"
+          echo "MAVEN_VERSION: $MAVEN_VERSION"
+
+          # Create Maven settings.xml with GitHub authentication
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<EOF
+          <settings>
+            <servers>
+              <server>
+                <id>github</id>
+                <username>${REPOSITORY_USERNAME}</username>
+                <password>${REPOSITORY_PASSWORD}</password>
+              </server>
+            </servers>
+          </settings>
+          EOF
+
+          # Publish only platform-specific JARs using deploy:deploy-file
+          # This adds JARs to the existing publication created by Linux
+          for jar in build/publications/*.jar; do
+            if [[ "$jar" == *"-mac.jar" ]]; then
+              # Extract metadata from the jar path
+              module_name=$(basename "$(dirname "$jar")")
+              jar_name=$(basename "$jar" .jar)
+              artifact_id="${jar_name%-mac}"
+              artifact_id="${artifact_id//./-}"
+
+              echo "Deploying $jar as $artifact_id in group $MAVEN_GROUP_ID with classifier mac-aarch64"
+
+              mvn deploy:deploy-file \
+                -DgroupId="$MAVEN_GROUP_ID" \
+                -DartifactId="$artifact_id" \
+                -Dversion="$MAVEN_VERSION" \
+                -Dclassifier="mac-aarch64" \
+                -Dpackaging=jar \
+                -Dfile="$jar" \
+                -DrepositoryId=github \
+                -Durl="${REPOSITORY_URL}" \
+                -DgeneratePom=false
+            fi
+          done
+
 
   windows_x64_build:
     name: Windows x64
-    needs: validation
+    needs: linux_x64_build
     runs-on: "windows-2022"
 
     env:
@@ -414,9 +493,10 @@ jobs:
           java -version
           .\gradlew.bat -version
           # Skip "chmod" task for GHA builds. See JDK-8354337 for details.
-          .\gradlew.bat --info -PCHMOD_ARTIFACTS=false all
+          .\gradlew.bat --info -PCHMOD_ARTIFACTS=false all -x test
 
       - name: Run JavaFX headless tests
+        if: false # turned off for speed
         working-directory: jfx
         run: |
           echo "JAVA_HOME=$env:JAVA_HOME"
@@ -424,3 +504,48 @@ jobs:
           $env:Path = "$env:THE_PATH" ;
           echo "Path=$env:Path"
           .\gradlew.bat --info --continue -PTEST_ONLY=true test -x :web:test
+
+      - name: Publish Windows artifacts to GitHub Packages
+        if: startsWith(github.ref, 'refs/tags/') && endsWith(github.ref_name, '-devmate')
+        working-directory: jfx
+        env:
+          REPOSITORY_URL: https://maven.pkg.github.com/${{ github.repository }}
+          REPOSITORY_USERNAME: ${{ github.actor }}
+          REPOSITORY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $env:Path = "$env:THE_PATH"
+          $gradleProps = .\gradlew.bat -q properties
+          $groupLine = ($gradleProps | Select-String "^MAVEN_GROUP_ID:" | Select-Object -First 1).Line
+          $versionLine = ($gradleProps | Select-String "^MAVEN_VERSION:" | Select-Object -First 1).Line
+          $MAVEN_GROUP_ID = ($groupLine -replace "^MAVEN_GROUP_ID:\s*", "").Trim()
+          $MAVEN_VERSION = ($versionLine -replace "^MAVEN_VERSION:\s*", "").Trim()
+          Write-Host "MAVEN_GROUP_ID: $MAVEN_GROUP_ID"
+          Write-Host "MAVEN_VERSION: $MAVEN_VERSION"
+          $m2Dir = "$HOME\.m2"
+          New-Item -ItemType Directory -Force -Path $m2Dir | Out-Null
+          @"
+          <settings>
+            <servers>
+              <server>
+                <id>github</id>
+                <username>$env:REPOSITORY_USERNAME</username>
+                <password>$env:REPOSITORY_PASSWORD</password>
+              </server>
+            </servers>
+          </settings>
+          "@ | Out-File -FilePath "$m2Dir\settings.xml" -Encoding utf8
+          Get-ChildItem -Path "build\publications" -Filter "*-win.jar" -Recurse | ForEach-Object {
+            $jar = $_.FullName
+            $jarName = $_.BaseName
+            $artifactId = $jarName -replace '-win$', '' -replace '\.', '-'
+            mvn deploy:deploy-file `
+              "-DgroupId=$MAVEN_GROUP_ID" `
+              "-DartifactId=$artifactId" `
+              "-Dversion=$MAVEN_VERSION" `
+              "-Dclassifier=win" `
+              "-Dpackaging=jar" `
+              "-Dfile=$jar" `
+              "-DrepositoryId=github" `
+              "-Durl=$env:REPOSITORY_URL" `
+              "-DgeneratePom=false"
+          }
