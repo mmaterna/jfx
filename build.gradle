@@ -525,7 +525,7 @@ ext.IS_DEBUG_NATIVE = CONF == "DebugNative"
 ext.IS_RELEASE = !ext.IS_DEBUG_JAVA
 
 // Specifies whether to enable the Maven publishing tasks
-defineProperty("MAVEN_PUBLISH", "false")
+defineProperty("MAVEN_PUBLISH", "true")
 ext.IS_MAVEN_PUBLISH = Boolean.parseBoolean(MAVEN_PUBLISH)
 
 // Define the compiler lint warnings to enable.
@@ -610,7 +610,7 @@ defineProperty("NUM_COMPILE_THREADS", "${Runtime.runtime.availableProcessors()}"
 //
 
 // The following properties should be left alone by developers and set only from Hudson.
-defineProperty("HUDSON_JOB_NAME", "not_hudson")
+defineProperty("HUDSON_JOB_NAME", "devmate")
 defineProperty("HUDSON_BUILD_NUMBER","0000")
 defineProperty("PROMOTED_BUILD_NUMBER", "0")
 defineProperty("MILESTONE_FCS", "false")
