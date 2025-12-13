@@ -526,6 +526,11 @@ ext.IS_RELEASE = !ext.IS_DEBUG_JAVA
 defineProperty("MAVEN_PUBLISH", "true")
 ext.IS_MAVEN_PUBLISH = Boolean.parseBoolean(MAVEN_PUBLISH)
 
+// Specifies whether to publish common (non-classified) artifacts
+// Set to false on non-primary platforms to avoid conflicts when multiple platforms publish simultaneously
+defineProperty("PUBLISH_COMMON_ARTIFACTS", "true")
+ext.IS_PUBLISH_COMMON_ARTIFACTS = Boolean.parseBoolean(PUBLISH_COMMON_ARTIFACTS)
+
 // Define the compiler lint warnings to enable.
 //
 // We define a separate set of options for normal classes, test classes
@@ -1816,7 +1821,11 @@ void addMavenPublication(Project project, List<String> projectDependencies) {
                     artifactId = artifactName
 
                     afterEvaluate {
-                        artifact project.tasks."moduleEmptyPublicationJar$t.capital"
+                        // Only publish common (non-classifier) artifacts from primary platform
+                        // to avoid conflicts when multiple platforms publish simultaneously
+                        if (IS_PUBLISH_COMMON_ARTIFACTS) {
+                            artifact project.tasks."moduleEmptyPublicationJar$t.capital"
+                        }
                         artifact project.tasks."modularPublicationJar$t.capital" {
                             archiveClassifier.set("$t.name")
                         }

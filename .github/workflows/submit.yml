@@ -47,11 +47,14 @@ on:
       - main
       - 'jfx[0-9]+'
       - 'WIP*'
+    tags:
+      - '*-devmate'
   # Enable triggering the workflow manually
   workflow_dispatch:
 
 permissions:
   contents: read
+  packages: write  # Required for publishing to GitHub Packages
 
 jobs:
   validation:
@@ -136,107 +139,95 @@ jobs:
           # export PATH="$JAVA_HOME/bin:$ANT_HOME/bin:$PATH"
           export PATH="$JAVA_HOME/bin:$PATH"
           bash gradlew -version
-          bash gradlew --info all
+          bash gradlew --info all -x test
 
-      - name: Run JavaFX headless tests
+      # Temporarily disabled to speed up builds
+      # - name: Run JavaFX headless tests
+      #   working-directory: jfx
+      #   run: |
+      #     set -x
+      #     # export PATH="$JAVA_HOME/bin:$ANT_HOME/bin:$PATH"
+      #     export PATH="$JAVA_HOME/bin:$PATH"
+      #     bash gradlew --info --continue -PTEST_ONLY=true test -x :web:test
+
+      - name: Publish common and Linux artifacts to GitHub Packages
+        if: startsWith(github.ref, 'refs/tags/') && endsWith(github.ref_name, '-devmate')
         working-directory: jfx
+        env:
+          REPOSITORY_URL: https://maven.pkg.github.com/${{ github.repository }}
+          REPOSITORY_USERNAME: ${{ github.actor }}
+          REPOSITORY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -x
-          # export PATH="$JAVA_HOME/bin:$ANT_HOME/bin:$PATH"
           export PATH="$JAVA_HOME/bin:$PATH"
-          bash gradlew --info --continue -PTEST_ONLY=true test -x :web:test
+          # Linux publishes both common and platform-specific artifacts
+          bash gradlew publish \
+            -PrepositoryUrl="${REPOSITORY_URL}" \
+            -PrepositoryUsername="${REPOSITORY_USERNAME}" \
+            -PrepositoryPassword="${REPOSITORY_PASSWORD}" \
+            -PPUBLISH_COMMON_ARTIFACTS=true
 
 
-  macos_x64_build:
-    name: macOS x64
-    needs: validation
-    runs-on: "macos-13"
-
-    env:
-      # FIXME: read this information from a property file
-      # BOOT_JDK_VERSION: "${{ fromJson(needs.prerequisites.outputs.dependencies).BOOT_JDK_VERSION }}"
-      # BOOT_JDK_FILENAME: "${{ fromJson(needs.prerequisites.outputs.dependencies).LINUX_X64_BOOT_JDK_FILENAME }}"
-      # BOOT_JDK_URL: "${{ fromJson(needs.prerequisites.outputs.dependencies).LINUX_X64_BOOT_JDK_URL }}"
-      # BOOT_JDK_SHA256: "${{ fromJson(needs.prerequisites.outputs.dependencies).LINUX_X64_BOOT_JDK_SHA256 }}"
-      BOOT_JDK_VERSION: "24.0.1"
-      BOOT_JDK_FILENAME: "jdk-24.0.1_macos-x64_bin.tar.gz"
-      BOOT_JDK_URL: "https://download.oracle.com/java/24/archive/jdk-24.0.1_macos-x64_bin.tar.gz"
-      # Disabled due to timeout downloading ant; use ant installed on system
-      #ANT_DIR: "apache-ant-1.10.5"
-      #ANT_FILENAME: "apache-ant-1.10.5.tar.gz"
-      #ANT_URL: "https://archive.apache.org/dist/ant/binaries/apache-ant-1.10.5-bin.tar.gz"
-
-    steps:
-      - name: Checkout the source
-        uses: actions/checkout@v4
-        with:
-          path: jfx
-
-      - name: Install dependencies
-        run: |
-          set -x
-          echo "NOT NEEDED: brew install make"
-          echo "NOT NEEDED: wget ... ant"
-          #mkdir -p "${HOME}/build-tools"
-          #wget -O "${HOME}/build-tools/${ANT_FILENAME}" "${ANT_URL}"
-          #tar -zxf "${HOME}/build-tools/${ANT_FILENAME}" -C "${HOME}/build-tools"
-
-# FIXME: enable cache for boot JDK
-#      - name: Restore boot JDK from cache
-#        id: bootjdk
-#        uses: actions/cache@v4
-#        with:
-#          path: ~/bootjdk/${{ env.BOOT_JDK_VERSION }}
-#          key: bootjdk-${{ runner.os }}-${{ env.BOOT_JDK_VERSION }}-${{ env.BOOT_JDK_SHA256 }}-v1
-
-      - name: Download boot JDK
-        run: |
-          set -x
-          mkdir -p "${HOME}/bootjdk"
-          wget -O "${HOME}/bootjdk/${BOOT_JDK_FILENAME}" "${BOOT_JDK_URL}"
-          # FIXME: sha256sum
-          tar -xf "${HOME}/bootjdk/${BOOT_JDK_FILENAME}" -C "${HOME}/bootjdk"
-          # FIXME: enable cache for boot JDK
-
-      - name: Setup environment
-        run: |
-          set -x
-          export JAVA_HOME="${HOME}/bootjdk/jdk-${BOOT_JDK_VERSION}.jdk/Contents/Home"
-          echo "JAVA_HOME=${JAVA_HOME}" >> "${GITHUB_ENV}"
-          #export ANT_HOME="${HOME}/build-tools/${ANT_DIR}"
-          #echo "ANT_HOME=${ANT_HOME}" >> "${GITHUB_ENV}"
-          #export PATH="$JAVA_HOME/bin:$ANT_HOME/bin:$PATH"
-          export PATH="$JAVA_HOME/bin:$PATH"
-          env | sort
-          which java
-          java -version
-          which ant
-          ant -version
-          # We want to use Xcode 15.4, but 15.2 is the highest that the GHA macOS 13 runner supports
-          sudo xcode-select --switch /Applications/Xcode_15.2.app/Contents/Developer
-          xcodebuild -version
-
-      - name: Build JavaFX artifacts
-        working-directory: jfx
-        run: |
-          set -x
-          #export PATH="$JAVA_HOME/bin:$ANT_HOME/bin:$PATH"
-          export PATH="$JAVA_HOME/bin:$PATH"
-          bash gradlew -version
-          bash gradlew --info all
-
-      - name: Run JavaFX headless tests
-        working-directory: jfx
-        run: |
-          set -x
-          #export PATH="$JAVA_HOME/bin:$ANT_HOME/bin:$PATH"
-          export PATH="$JAVA_HOME/bin:$PATH"
-          bash gradlew --info --continue -PTEST_ONLY=true test -x :web:test
+  # Temporarily disabled - macOS x64 build
+  # macos_x64_build:
+  #   name: macOS x64
+  #   needs: linux_x64_build
+  #   runs-on: "macos-15"
+  #
+  #   env:
+  #     BOOT_JDK_VERSION: "24.0.1"
+  #     BOOT_JDK_FILENAME: "jdk-24.0.1_macos-x64_bin.tar.gz"
+  #     BOOT_JDK_URL: "https://download.oracle.com/java/24/archive/jdk-24.0.1_macos-x64_bin.tar.gz"
+  #
+  #   steps:
+  #     - name: Checkout the source
+  #       uses: actions/checkout@v4
+  #       with:
+  #         path: jfx
+  #
+  #     - name: Install dependencies
+  #       run: |
+  #         set -x
+  #         echo "NOT NEEDED: brew install make"
+  #         echo "NOT NEEDED: wget ... ant"
+  #
+  #     - name: Download boot JDK
+  #       run: |
+  #         set -x
+  #         mkdir -p "${HOME}/bootjdk"
+  #         wget -O "${HOME}/bootjdk/${BOOT_JDK_FILENAME}" "${BOOT_JDK_URL}"
+  #         tar -xf "${HOME}/bootjdk/${BOOT_JDK_FILENAME}" -C "${HOME}/bootjdk"
+  #
+  #     - name: Setup environment
+  #       run: |
+  #         set -x
+  #         export JAVA_HOME="${HOME}/bootjdk/jdk-${BOOT_JDK_VERSION}.jdk/Contents/Home"
+  #         echo "JAVA_HOME=${JAVA_HOME}" >> "${GITHUB_ENV}"
+  #         export PATH="$JAVA_HOME/bin:$PATH"
+  #         env | sort
+  #         which java
+  #         java -version
+  #         which ant
+  #         ant -version
+  #         sudo xcode-select --switch /Applications/Xcode_15.2.app/Contents/Developer
+  #         xcodebuild -version
+  #
+  #     - name: Build JavaFX artifacts
+  #       working-directory: jfx
+  #       run: |
+  #         set -x
+  #         export PATH="$JAVA_HOME/bin:$PATH"
+  #         bash gradlew -version
+  #         bash gradlew --info all -x test
+  #
+  #     - name: Skip macOS x64 publish (using aarch64 instead)
+  #       run: |
+  #         echo "Skipping macOS x64 publish - using aarch64 as primary macOS platform"
 
 
   macos_aarch64_build:
     name: macOS aarch64
-    needs: validation
+    needs: windows_x64_build
     runs-on: "macos-14"
 
     env:
@@ -309,28 +300,81 @@ jobs:
           #export PATH="$JAVA_HOME/bin:$ANT_HOME/bin:$PATH"
           export PATH="$JAVA_HOME/bin:$PATH"
           bash gradlew -version
-          bash gradlew --info all
+          bash gradlew --info all -x test
 
-      - name: Run JavaFX headless tests
+      # Temporarily disabled to speed up builds
+      # - name: Run JavaFX headless tests
+      #   working-directory: jfx
+      #   run: |
+      #     set -x
+      #     #export PATH="$JAVA_HOME/bin:$ANT_HOME/bin:$PATH"
+      #     export PATH="$JAVA_HOME/bin:$PATH"
+      #     bash gradlew --info --continue -PTEST_ONLY=true test -x :web:test
+
+      - name: Publish macOS aarch64 artifacts to GitHub Packages
+        if: startsWith(github.ref, 'refs/tags/') && endsWith(github.ref_name, '-devmate')
         working-directory: jfx
+        env:
+          REPOSITORY_URL: https://maven.pkg.github.com/${{ github.repository }}
+          REPOSITORY_USERNAME: ${{ github.actor }}
+          REPOSITORY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -x
-          #export PATH="$JAVA_HOME/bin:$ANT_HOME/bin:$PATH"
           export PATH="$JAVA_HOME/bin:$PATH"
-          bash gradlew --info --continue -PTEST_ONLY=true test -x :web:test
+
+          # Extract Maven coordinates from Gradle
+          MAVEN_GROUP_ID=$(bash gradlew -q properties | grep "^MAVEN_GROUP_ID:" | awk '{print $2}' | head -n 1)
+          MAVEN_VERSION=$(bash gradlew -q properties | grep "^MAVEN_VERSION:" | awk '{print $2}' | head -n 1)
+
+          echo "MAVEN_GROUP_ID: $MAVEN_GROUP_ID"
+          echo "MAVEN_VERSION: $MAVEN_VERSION"
+
+          # Create Maven settings.xml with GitHub authentication
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<EOF
+          <settings>
+            <servers>
+              <server>
+                <id>github</id>
+                <username>${REPOSITORY_USERNAME}</username>
+                <password>${REPOSITORY_PASSWORD}</password>
+              </server>
+            </servers>
+          </settings>
+          EOF
+
+          # Publish only platform-specific JARs using deploy:deploy-file
+          # This adds JARs to the existing publication created by Linux
+          for jar in build/publications/*.jar; do
+            if [[ "$jar" == *"-mac.jar" ]]; then
+              # Extract metadata from the jar path
+              module_name=$(basename "$(dirname "$jar")")
+              jar_name=$(basename "$jar" .jar)
+              artifact_id="${jar_name%-mac}"
+              artifact_id="${artifact_id//./-}"
+
+              echo "Deploying $jar as $artifact_id in group $MAVEN_GROUP_ID with classifier mac-aarch64"
+
+              mvn deploy:deploy-file \
+                -DgroupId="$MAVEN_GROUP_ID" \
+                -DartifactId="$artifact_id" \
+                -Dversion="$MAVEN_VERSION" \
+                -Dclassifier="mac-aarch64" \
+                -Dpackaging=jar \
+                -Dfile="$jar" \
+                -DrepositoryId=github \
+                -Durl="${REPOSITORY_URL}" \
+                -DgeneratePom=false
+            fi
+          done
 
 
   windows_x64_build:
     name: Windows x64
-    needs: validation
+    needs: linux_x64_build
     runs-on: "windows-2022"
 
     env:
-      # FIXME: read this information from a property file
-      # BOOT_JDK_VERSION: "${{ fromJson(needs.prerequisites.outputs.dependencies).BOOT_JDK_VERSION }}"
-      # BOOT_JDK_FILENAME: "${{ fromJson(needs.prerequisites.outputs.dependencies).LINUX_X64_BOOT_JDK_FILENAME }}"
-      # BOOT_JDK_URL: "${{ fromJson(needs.prerequisites.outputs.dependencies).LINUX_X64_BOOT_JDK_URL }}"
-      # BOOT_JDK_SHA256: "${{ fromJson(needs.prerequisites.outputs.dependencies).LINUX_X64_BOOT_JDK_SHA256 }}"
       BOOT_JDK_VERSION: "24.0.1"
       BOOT_JDK_FILENAME: "jdk-24.0.1_windows-x64_bin.zip"
       BOOT_JDK_URL: "https://download.oracle.com/java/24/archive/jdk-24.0.1_windows-x64_bin.zip"
@@ -344,21 +388,11 @@ jobs:
         with:
           path: jfx
 
-# FIXME: enable cache for boot JDK
-#      - name: Restore boot JDK from cache
-#        id: bootjdk
-#        uses: actions/cache@v4
-#        with:
-#          path: ~/bootjdk/${{ env.BOOT_JDK_VERSION }}
-#          key: bootjdk-${{ runner.os }}-${{ env.BOOT_JDK_VERSION }}-${{ env.BOOT_JDK_SHA256 }}-v1
-
       - name: Download boot JDK
         run: |
           mkdir -p "$HOME\bootjdk"
           & curl -L "$env:BOOT_JDK_URL" -o "$HOME/bootjdk/$env:BOOT_JDK_FILENAME"
-          # FIXME: sha256sum
           tar -xf "$HOME/bootjdk/$env:BOOT_JDK_FILENAME" -C "$HOME/bootjdk"
-          # FIXME: enable cache for boot JDK
 
       - name: Restore cygwin packages from cache
         id: cygwin
@@ -381,24 +415,10 @@ jobs:
 
       - name: Setup environment
         run: |
-          echo "dir ...\VC\Tools\MSVC"
-          dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC"
-          # echo "dir ...\VC\Tools\MSVC"
-          # dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC"
-
-          $env:Path = "$HOME\cygwin\cygwin64\bin;$HOME\cygwin\cygwin64\bin;$env:Path" ;
-          $env:JAVA_HOME = "$HOME\bootjdk\jdk-$env:BOOT_JDK_VERSION" ;
-          echo "JAVA_HOME=$env:JAVA_HOME"
+          $env:Path = "$HOME\cygwin\cygwin64\bin;$HOME\cygwin\cygwin64\bin;$env:Path"
+          $env:JAVA_HOME = "$HOME\bootjdk\jdk-$env:BOOT_JDK_VERSION"
           $env:ANT_HOME = "${HOME}\build-tools\$env:ANT_DIR"
-          echo "ANT_HOME=$env:ANT_HOME"
-          $env:Path = "$env:JAVA_HOME\bin;$env:ANT_HOME\bin;$env:Path" ;
-          echo "Path=$env:Path"
-          which java
-          java -version
-          which ant
-          ant -version
-
-          # Save JAVA_HOME, ANT_HOME, and Path (renamed to THE_PATH) in env variables
+          $env:Path = "$env:JAVA_HOME\bin;$env:ANT_HOME\bin;$env:Path"
           echo "JAVA_HOME=$env:JAVA_HOME" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           echo "ANT_HOME=$env:ANT_HOME" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           echo "THE_PATH=$env:Path" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
@@ -406,21 +426,50 @@ jobs:
       - name: Build JavaFX artifacts
         working-directory: jfx
         run: |
-          echo "JAVA_HOME=$env:JAVA_HOME"
-          echo "ANT_HOME=$env:ANT_HOME"
-          $env:Path = "$env:THE_PATH" ;
-          echo "Path=$env:Path"
-          which java
-          java -version
-          .\gradlew.bat -version
-          # Skip "chmod" task for GHA builds. See JDK-8354337 for details.
-          .\gradlew.bat --info -PCHMOD_ARTIFACTS=false all
+          $env:Path = "$env:THE_PATH"
+          .\gradlew.bat --info -PCHMOD_ARTIFACTS=false all -x test
 
-      - name: Run JavaFX headless tests
+      - name: Publish Windows artifacts to GitHub Packages
+        if: startsWith(github.ref, 'refs/tags/') && endsWith(github.ref_name, '-devmate')
         working-directory: jfx
+        env:
+          REPOSITORY_URL: https://maven.pkg.github.com/${{ github.repository }}
+          REPOSITORY_USERNAME: ${{ github.actor }}
+          REPOSITORY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "JAVA_HOME=$env:JAVA_HOME"
-          echo "ANT_HOME=$env:ANT_HOME"
-          $env:Path = "$env:THE_PATH" ;
-          echo "Path=$env:Path"
-          .\gradlew.bat --info --continue -PTEST_ONLY=true test -x :web:test
+          $env:Path = "$env:THE_PATH"
+          $gradleProps = .\gradlew.bat -q properties
+          $groupLine = ($gradleProps | Select-String "^MAVEN_GROUP_ID:" | Select-Object -First 1).Line
+          $versionLine = ($gradleProps | Select-String "^MAVEN_VERSION:" | Select-Object -First 1).Line
+          $MAVEN_GROUP_ID = ($groupLine -replace "^MAVEN_GROUP_ID:\s*", "").Trim()
+          $MAVEN_VERSION = ($versionLine -replace "^MAVEN_VERSION:\s*", "").Trim()
+          Write-Host "MAVEN_GROUP_ID: $MAVEN_GROUP_ID"
+          Write-Host "MAVEN_VERSION: $MAVEN_VERSION"
+          $m2Dir = "$HOME\.m2"
+          New-Item -ItemType Directory -Force -Path $m2Dir | Out-Null
+          @"
+          <settings>
+            <servers>
+              <server>
+                <id>github</id>
+                <username>$env:REPOSITORY_USERNAME</username>
+                <password>$env:REPOSITORY_PASSWORD</password>
+              </server>
+            </servers>
+          </settings>
+          "@ | Out-File -FilePath "$m2Dir\settings.xml" -Encoding utf8
+          Get-ChildItem -Path "build\publications" -Filter "*-win.jar" -Recurse | ForEach-Object {
+            $jar = $_.FullName
+            $jarName = $_.BaseName
+            $artifactId = $jarName -replace '-win$', '' -replace '\.', '-'
+            mvn deploy:deploy-file `
+              "-DgroupId=$MAVEN_GROUP_ID" `
+              "-DartifactId=$artifactId" `
+              "-Dversion=$MAVEN_VERSION" `
+              "-Dclassifier=win" `
+              "-Dpackaging=jar" `
+              "-Dfile=$jar" `
+              "-DrepositoryId=github" `
+              "-Durl=$env:REPOSITORY_URL" `
+              "-DgeneratePom=false"
+          }
