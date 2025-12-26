@@ -1813,6 +1813,12 @@ void addMavenPublication(Project project, List<String> projectDependencies) {
         }
     }
 
+    // Create a sources jar task for this project
+    def sourcesJarTask = project.tasks.findByName('sourcesJar') ?: project.task('sourcesJar', type: Jar) {
+        archiveClassifier.set('sources')
+        from project.sourceSets.main.allJava
+    }
+
     compileTargets { t ->
         project.publishing {
             publications {
@@ -1825,6 +1831,8 @@ void addMavenPublication(Project project, List<String> projectDependencies) {
                         // to avoid conflicts when multiple platforms publish simultaneously
                         if (IS_PUBLISH_COMMON_ARTIFACTS) {
                             artifact project.tasks."moduleEmptyPublicationJar$t.capital"
+                            // Publish sources jar (platform-independent, so only publish once)
+                            artifact sourcesJarTask
                         }
                         artifact project.tasks."modularPublicationJar$t.capital" {
                             archiveClassifier.set("$t.name")
