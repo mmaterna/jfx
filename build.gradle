@@ -1814,7 +1814,8 @@ void addMavenPublication(Project project, List<String> projectDependencies) {
     }
 
     // Create a sources jar task for this project
-    def sourcesJarTask = project.tasks.findByName('sourcesJar') ?: project.task('sourcesJar', type: Jar) {
+    // Depends on compileJava to ensure generated sources are available
+    def sourcesJarTask = project.tasks.findByName('sourcesJar') ?: project.task('sourcesJar', type: Jar, dependsOn: project.compileJava) {
         archiveClassifier.set('sources')
         from project.sourceSets.main.allJava
     }
