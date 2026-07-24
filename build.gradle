@@ -630,7 +630,7 @@ defineProperty("MAX_COMPILE_THREADS", "0")
 // The following properties should be left alone by developers and set only from Hudson.
 defineProperty("HUDSON_JOB_NAME", "devmate")
 defineProperty("HUDSON_BUILD_NUMBER","0000")
-defineProperty("PROMOTED_BUILD_NUMBER", "0")
+defineProperty("PROMOTED_BUILD_NUMBER", "1")
 defineProperty("MILESTONE_FCS", "false")
 ext.IS_MILESTONE_FCS = Boolean.parseBoolean(MILESTONE_FCS)
 

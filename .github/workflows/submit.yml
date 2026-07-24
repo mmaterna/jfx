@@ -389,7 +389,7 @@ jobs:
                 -DgroupId="$MAVEN_GROUP_ID" \
                 -DartifactId="$artifact_id" \
                 -Dversion="$MAVEN_VERSION" \
-                -Dclassifier="mac-aarch64" \
+                -Dclassifier="mac" \
                 -Dpackaging=jar \
                 -Dfile="$jar" \
                 -DrepositoryId=github \
